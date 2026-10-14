@@ -28,24 +28,42 @@ def read_scope(path: Path):
 
 def read_targets(args):
     values = []
+
+    # -t/--target accepts either one IP address or a file containing one IP per line.
+    # --target-file remains supported for compatibility.
     if args.target:
-        values.append(args.target)
+        target_path = Path(args.target).expanduser()
+        if target_path.is_file():
+            for line_no, raw in enumerate(target_path.read_text(encoding="utf-8").splitlines(), 1):
+                line = raw.split("#", 1)[0].strip()
+                if line:
+                    values.append((line, f"{target_path}:{line_no}"))
+        else:
+            values.append((args.target, "-t/--target"))
+
     if args.target_file:
-        for raw in Path(args.target_file).read_text(encoding="utf-8").splitlines():
+        target_path = Path(args.target_file).expanduser()
+        for line_no, raw in enumerate(target_path.read_text(encoding="utf-8").splitlines(), 1):
             line = raw.split("#", 1)[0].strip()
             if line:
-                values.append(line)
+                values.append((line, f"{target_path}:{line_no}"))
+
     if not values:
-        raise ValueError("--target veya --target-file belirtmelisin.")
+        raise ValueError("-t/--target ile tek IP veya IP listesi dosyası belirtmelisin.")
 
     targets = []
-    for raw in values:
+    for raw, source in values:
         try:
             addr = ipaddress.ip_address(raw.strip())
         except ValueError as exc:
-            raise ValueError(f"Bu ilk sürüm yalnızca IP adresi kabul ediyor: {raw}") from exc
+            raise ValueError(
+                f"{source} içinde geçersiz hedef: {raw!r}. "
+                "Hedef dosyasında satır başına bir IP adresi olmalı; CIDR hedef olarak desteklenmez."
+            ) from exc
         if not any(addr.version == net.version and addr in net for net in args.scope_networks):
-            raise ValueError(f"{addr} scope.txt içinde değil; tarama durduruldu.")
+            raise ValueError(
+                f"{addr} scope dosyasında tanımlı yetkili kapsamın dışında; tarama durduruldu."
+            )
         if str(addr) not in targets:
             targets.append(str(addr))
     return targets
@@ -55,8 +73,8 @@ def main():
     ap = argparse.ArgumentParser(
         description="Yetkili kapsam içindeki sistemler için denetlenebilir Nmap tabanlı değerlendirme."
     )
-    ap.add_argument("-t", "--target", help="Tek hedef IPv4/IPv6 adresi")
-    ap.add_argument("--target-file", help="Satır başına bir IP adresi içeren dosya")
+    ap.add_argument("-t", "--target", help="Tek IP adresi veya satır başına bir IP içeren dosya yolu")
+    ap.add_argument("--target-file", help="Satır başına bir IP adresi içeren dosya (geriye dönük uyumluluk)")
     ap.add_argument("--scope-file", default="scope.txt", help="Yetkili IP/CIDR kapsamı (varsayılan: scope.txt)")
     ap.add_argument("-p", "--ports", help="Port listesi veya port dosyası; ör. 22,80,443 ya da ports.txt")
     ap.add_argument("--profile", choices=("safe", "standard"), default="safe",

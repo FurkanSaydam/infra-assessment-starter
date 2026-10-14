@@ -31,7 +31,7 @@ python3 -m py_compile scanner.py core.py parser.py web.py smb.py audit.py ui.py 
 192.168.56.0/24
 ```
 
-Bu sadece örnek özel ağ aralığıdır; kendi lab topolojinle değiştir. Dosya boşken tarama çalışmaz. Her hedef, scope içindeki bir IP olmak zorundadır. İlk sürüm hedef olarak IP kabul eder; hostname ve hedef CIDR kabul etmez.
+Bu sadece örnek özel ağ aralığıdır; kendi lab topolojinle değiştir. Dosya boşken tarama çalışmaz. Her hedef, scope içindeki bir IP olmak zorundadır. `-t` tek bir IP veya satır başına bir IP içeren dosya yolunu kabul eder. Hedef dosyasında hostname ve CIDR hedefleri desteklenmez.
 
 ## 3. İlk, daha düşük etkili deneme
 
@@ -66,6 +66,9 @@ Dosya içeriği Nmap'e virgülle ayrılmış biçimde aktarılır; portlar doğr
 `targets.txt` içine satır başına IP koy ve her IP'nin `scope.txt` içinde tanımlanan bir aralığa düştüğünü doğrula:
 
 ```bash
+python3 scanner.py -t targets.txt --scope-file scope.txt --profile safe
+
+# Eski seçenek de desteklenir:
 python3 scanner.py --target-file targets.txt --scope-file scope.txt --profile safe
 ```
 
