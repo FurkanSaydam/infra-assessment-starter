@@ -1,0 +1,2 @@
+# Her satıra bir hedef IP yaz. Yorum satırları # ile başlar.
+# 192.168.56.10

@@ -1,0 +1,2 @@
+# Rich is optional; the tool falls back to plain terminal output.
+rich>=13.7,<15

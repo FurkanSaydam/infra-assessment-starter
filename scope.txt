@@ -1,0 +1,3 @@
+# ÖRNEK — KENDİ LAB IP/CIDR BİLGİNLE DEĞİŞTİR.
+# Tarama yapmaya yetkili olduğun adresleri yaz; örnek IP'yi hedef olarak kullanma.
+# 192.168.56.0/24
