@@ -51,7 +51,15 @@ python3 scanner.py -t 192.168.56.10 --scope-file scope.txt -p 22,80,443 --profil
 
 `standard` profili `-sC` ekler. `-sC`, Nmap'in varsayılan NSE scriptlerini çalıştırır; tamamen pasif değildir. Önce lab'de test et. Bu MVP bilerek `vuln`, `exploit`, `intrusive`, `http*` veya `smb*` kategorilerini topluca çalıştırmaz.
 
-Port belirtmezsen Nmap'in ilk 1000 yaygın TCP portu taranır. UDP taraması bu MVP'de yapılmaz.
+`-p` doğrudan port listesi (`-p 22,80,443`) veya port dosyası (`-p ports.txt`) kabul eder. Port dosyasında portları virgülle, boşlukla, tab ile veya alt alta yazabilirsin; boş satırlar ve `#` yorumları yok sayılır. Örnek:
+
+```text
+22 80 443
+445
+8000-8100
+```
+
+Dosya içeriği Nmap'e virgülle ayrılmış biçimde aktarılır; portlar doğrulanır ve tekrar eden değerler ayıklanır. Port belirtmezsen Nmap'in ilk 1000 yaygın TCP portu taranır. UDP taraması bu MVP'de yapılmaz.
 
 ## 5. Birden fazla hedef
 

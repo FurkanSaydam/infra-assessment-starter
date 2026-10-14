@@ -58,7 +58,7 @@ def main():
     ap.add_argument("-t", "--target", help="Tek hedef IPv4/IPv6 adresi")
     ap.add_argument("--target-file", help="Satır başına bir IP adresi içeren dosya")
     ap.add_argument("--scope-file", default="scope.txt", help="Yetkili IP/CIDR kapsamı (varsayılan: scope.txt)")
-    ap.add_argument("-p", "--ports", help="Nmap port listesi; ör. 22,80,443,8000-8100")
+    ap.add_argument("-p", "--ports", help="Port listesi veya port dosyası; ör. 22,80,443 ya da ports.txt")
     ap.add_argument("--profile", choices=("safe", "standard"), default="safe",
                     help="safe: -sV; standard: -sV -sC (Nmap default NSE scriptleri)")
     ap.add_argument("--timeout", type=int, default=900, help="Hedef başına zaman aşımı, saniye (varsayılan: 900)")

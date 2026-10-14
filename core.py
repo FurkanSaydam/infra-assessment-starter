@@ -2,6 +2,7 @@
 import shutil
 import subprocess
 import time
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,14 +10,53 @@ from config import NMAP_BINARY
 
 
 def validate_ports(ports):
+    """Accept a comma/space-separated port list or a file containing ports."""
     if not ports:
         return None
-    allowed = set("0123456789,-")
-    if not ports or any(ch not in allowed for ch in ports):
-        raise ValueError("Port ifadesi yalnızca rakam, virgül ve tire içerebilir.")
-    if ports.startswith(",") or ports.endswith(",") or ",," in ports:
-        raise ValueError("Port listesi biçimi geçersiz.")
-    return ports
+
+    supplied = ports.strip()
+    candidate = Path(supplied).expanduser()
+    if candidate.is_file():
+        raw = candidate.read_text(encoding="utf-8")
+        # Support commas, spaces, tabs, and newlines; ignore # comments.
+        tokens = []
+        for line in raw.splitlines():
+            line = line.split("#", 1)[0].strip()
+            if line:
+                tokens.extend(part for part in re.split(r"[\s,]+", line) if part)
+        if not tokens:
+            raise ValueError(f"Port dosyası boş: {candidate}")
+    else:
+        tokens = [part for part in re.split(r"[\s,]+", supplied) if part]
+
+    normalized = []
+    seen = set()
+    for token in tokens:
+        if not re.fullmatch(r"\d+(?:-\d+)?", token):
+            raise ValueError(
+                f"Geçersiz port değeri: {token!r}. Portlar 1-65535 aralığında sayı "
+                "veya başlangıç-bitiş aralığı olmalı."
+            )
+        if "-" in token:
+            start_s, end_s = token.split("-", 1)
+            start, end = int(start_s), int(end_s)
+            if start > end:
+                raise ValueError(f"Port aralığı ters yazılmış: {token}")
+            if start < 1 or end > 65535:
+                raise ValueError(f"Port aralığı 1-65535 dışında: {token}")
+            value = f"{start}-{end}"
+        else:
+            port = int(token)
+            if not 1 <= port <= 65535:
+                raise ValueError(f"Port 1-65535 aralığında olmalı: {token}")
+            value = str(port)
+        if value not in seen:
+            normalized.append(value)
+            seen.add(value)
+
+    if not normalized:
+        raise ValueError("Geçerli port bulunamadı.")
+    return ",".join(normalized)
 
 
 def run_scan(target, ports, profile, timeout, output_dir, no_ping, audit):
