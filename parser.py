@@ -1,43 +1,34 @@
-"""Parse Nmap XML into normalized JSON; never infer 'not vulnerable' from missing data."""
+"""Defensive Nmap XML parser."""
 import xml.etree.ElementTree as ET
 from pathlib import Path
-
 from web import summarize_web_services
 from smb import summarize_smb_services
 
-
 def parse_nmap_xml(xml_path, target, meta):
-    root = ET.parse(Path(xml_path)).getroot()
+    try:
+        root = ET.parse(Path(xml_path)).getroot()
+    except (ET.ParseError, OSError) as exc:
+        raise ValueError(f"Nmap XML okunamadı/geçersiz: {exc}") from exc
     runstats = root.find("runstats")
     finished = runstats.find("finished") if runstats is not None else None
-    hosts = root.findall("host")
     host_results = []
-
-    for host in hosts:
+    for host in root.findall("host"):
         status_node = host.find("status")
-        host_status = status_node.get("state", "unknown") if status_node is not None else "unknown"
-        addresses = [
-            {"addr": node.get("addr"), "type": node.get("addrtype")}
-            for node in host.findall("address")
-        ]
-        hostnames = [n.get("name") for n in host.findall("./hostnames/hostname") if n.get("name")]
+        addresses = [{"addr": n.get("addr"), "type": n.get("addrtype")}
+                     for n in host.findall("address") if n.get("addr")]
         ports = []
         for port in host.findall("./ports/port"):
-            state_node = port.find("state")
-            service_node = port.find("service")
-            scripts = []
-            for script in port.findall("script"):
-                scripts.append({
-                    "id": script.get("id", ""),
-                    "output": script.get("output", ""),
-                    "elements": [
-                        {"key": e.get("key"), "text": (e.text or "").strip()}
-                        for e in list(script)
-                    ],
-                })
+            state_node, service_node = port.find("state"), port.find("service")
+            try:
+                port_number = int(port.get("portid") or 0)
+            except (ValueError, TypeError):
+                port_number = 0
+            scripts = [{"id": s.get("id", ""), "output": s.get("output", ""),
+                        "elements": [{"key": e.get("key"), "text": (e.text or "").strip()}
+                                     for e in list(s)]}
+                       for s in port.findall("script")]
             ports.append({
-                "protocol": port.get("protocol"),
-                "port": int(port.get("portid", "0")),
+                "protocol": port.get("protocol") or "unknown", "port": port_number,
                 "state": state_node.get("state", "unknown") if state_node is not None else "unknown",
                 "reason": state_node.get("reason") if state_node is not None else None,
                 "service": service_node.get("name") if service_node is not None else None,
@@ -47,35 +38,24 @@ def parse_nmap_xml(xml_path, target, meta):
                 "tunnel": service_node.get("tunnel") if service_node is not None else None,
                 "method": service_node.get("method") if service_node is not None else None,
                 "confidence": service_node.get("conf") if service_node is not None else None,
-                "scripts": scripts,
-            })
-
+                "scripts": scripts})
         host_results.append({
-            "status": host_status,
+            "status": status_node.get("state", "unknown") if status_node is not None else "unknown",
             "addresses": addresses,
-            "hostnames": hostnames,
-            "ports": ports,
-            "web_review": summarize_web_services(ports),
-            "smb_review": summarize_smb_services(ports),
-        })
-
+            "hostnames": [n.get("name") for n in host.findall("./hostnames/hostname") if n.get("name")],
+            "ports": ports, "web_review": summarize_web_services(ports),
+            "smb_review": summarize_smb_services(ports)})
+    hosts_node = runstats.find("hosts") if runstats is not None else None
     finished_status = finished.get("exit") if finished is not None else None
-    status = "completed" if meta.get("exit_code") == 0 and finished_status == "success" else "incomplete"
-    return {
-        "schema_version": "1.0",
-        "target": target,
-        "status": status,
-        "limitations": [
-            "Bu rapor yalnızca çalıştırılan taramanın kapsamını gösterir; tüm zafiyetlerin bulunduğunu garanti etmez.",
-            "Sürüm bilgisi tek başına CVE etkilenimini kanıtlamaz; vendor backport ve yapılandırma kontrolü gerekir.",
-            "Açık port veya servis tespiti tek başına zafiyet anlamına gelmez.",
-            "Taranmayan port/protokol ve başarısız kontroller 'güvenli' olarak yorumlanmamalıdır."
-        ],
-        "scan": {
-            **meta,
-            "nmap_finished_status": finished_status,
-            "hosts_up": runstats.find("hosts").get("up") if runstats is not None and runstats.find("hosts") is not None else None,
-            "hosts_down": runstats.find("hosts").get("down") if runstats is not None and runstats.find("hosts") is not None else None,
-        },
-        "hosts": host_results,
-    }
+    completed = meta.get("exit_code") == 0 and finished_status == "success"
+    return {"schema_version": "1.0", "target": target,
+            "status": "completed" if completed else "incomplete",
+            "limitations": [
+                "Rapor yalnızca çalıştırılan taramanın kapsamını gösterir; tüm zafiyetlerin bulunduğunu garanti etmez.",
+                "Servis sürümü tek başına CVE etkilenimini kanıtlamaz; vendor backport ve yapılandırma kontrolü gerekir.",
+                "Açık port veya servis tespiti tek başına zafiyet anlamına gelmez.",
+                "Taranmayan port/protokol ve başarısız kontroller güvenli olarak yorumlanmamalıdır."],
+            "scan": {**meta, "nmap_finished_status": finished_status,
+                     "hosts_up": hosts_node.get("up") if hosts_node is not None else None,
+                     "hosts_down": hosts_node.get("down") if hosts_node is not None else None},
+            "hosts": host_results}

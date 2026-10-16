@@ -1,92 +1,41 @@
-# Scoped Infrastructure Assessment — MVP 0.1.0
+# MFS Scanner
 
-Nmap tabanlı, kapsam kontrolü ve denetim kaydı bulunan bir başlangıç projesidir. **Yalnızca taramaya açıkça yetkili olduğun sistemlerde kullan.** Bu MVP tüm zafiyetleri bulduğunu iddia etmez.
+MFS Scanner, yalnızca açıkça tarama iznin bulunan IP/CIDR kapsamlarında kullanılmak üzere hazırlanmış Nmap tabanlı bir altyapı değerlendirme aracıdır.
 
-## İçerik
+## Kullanım
 
-- `scanner.py`: CLI ve scope doğrulaması
-- `core.py`: Nmap komutunu güvenli argüman listesiyle çalıştırır; XML ve log çıktısı üretir
-- `parser.py`: Nmap XML sonuçlarını JSON'a dönüştürür
-- `audit.py`: JSONL denetim kaydı
-- `web.py`, `smb.py`: Tespit edilen servisleri sonraki fazlara hazırlamak için sınıflandırır; henüz aktif web/SMB testi yapmaz
-- `config.py`: varsayılanlar
-- `scope.txt`: yetkili IP/CIDR kapsamı
-- `targets.txt`: isteğe bağlı hedef listesi
-
-## 1. Ön kontrol
+Hedefler `ip.txt` dosyasında, satır başına bir IP olacak şekilde; portlar `ports.txt` dosyasında olabilir:
 
 ```bash
-nmap --version
-python3 --version
-python3 -m py_compile scanner.py core.py parser.py web.py smb.py audit.py ui.py config.py
+python3 scanner.py -t ip.txt -p ports.txt
 ```
 
-İlk MVP, Python standart kütüphanesini kullanır; terminal arayüzü için `rich` opsiyoneldir. Paket kurmak zorunda değilsin. `requirements.txt` doğru dosya adıdır.
-
-## 2. Scope tanımla
-
-`scope.txt` içine yalnızca izinli IP adreslerini veya CIDR ağlarını yaz. Örnek:
+Örnek port dosyası:
 
 ```text
-192.168.56.0/24
+# yorumlar desteklenir
+22,80,443
+8000-8010
 ```
 
-Bu sadece örnek özel ağ aralığıdır; kendi lab topolojinle değiştir. Dosya boşken tarama çalışmaz. Her hedef, scope içindeki bir IP olmak zorundadır. `-t` tek bir IP veya satır başına bir IP içeren dosya yolunu kabul eder. Hedef dosyasında hostname ve CIDR hedefleri desteklenmez.
-
-## 3. İlk, daha düşük etkili deneme
-
-Önce kendi izole lab VM'inin IP adresini scope ve hedef olarak gir. Yalnızca seçili portları taramak için:
-
-```bash
-python3 scanner.py -t 192.168.56.10 --scope-file scope.txt -p 22,80,443 --profile safe
-```
-
-`192.168.56.10` örnektir; gerçek lab IP'nle değiştir. `safe` profili `-sV --version-light` kullanır. Bu da hedefe ağ trafiği gönderir; yalnızca izinli hedeflerde çalıştır.
-
-## 4. Standart profil
-
-```bash
-python3 scanner.py -t 192.168.56.10 --scope-file scope.txt -p 22,80,443 --profile standard
-```
-
-`standard` profili `-sC` ekler. `-sC`, Nmap'in varsayılan NSE scriptlerini çalıştırır; tamamen pasif değildir. Önce lab'de test et. Bu MVP bilerek `vuln`, `exploit`, `intrusive`, `http*` veya `smb*` kategorilerini topluca çalıştırmaz.
-
-`-p` doğrudan port listesi (`-p 22,80,443`) veya port dosyası (`-p ports.txt`) kabul eder. Port dosyasında portları virgülle, boşlukla, tab ile veya alt alta yazabilirsin; boş satırlar ve `#` yorumları yok sayılır. Örnek:
+Kapsam dosyası `scope.txt` içinde izinli IP/CIDR ağları olmalıdır. Dosya boşsa tarama başlatılmaz. Her hedef scope içinde olmalıdır.
 
 ```text
-22 80 443
-445
-8000-8100
+python3 -m pip install -r requirements.txt
+python3 scanner.py -t ip.txt -p ports.txt --scope-file scope.txt
 ```
 
-Dosya içeriği Nmap'e virgülle ayrılmış biçimde aktarılır; portlar doğrulanır ve tekrar eden değerler ayıklanır. Port belirtmezsen Nmap'in ilk 1000 yaygın TCP portu taranır. UDP taraması bu MVP'de yapılmaz.
+`--profile standard` Nmap varsayılan NSE scriptlerini (`-sC`) ekler; bu nedenle daha fazla etkileşimlidir. Varsayılan `safe` profilini önce kontrollü lab ortamında doğrula.
 
-## 5. Birden fazla hedef
+## Çıktı
 
-`targets.txt` içine satır başına IP koy ve her IP'nin `scope.txt` içinde tanımlanan bir aralığa düştüğünü doğrula:
+Her çalıştırma `result/YYYYMMDD_HHMMSS/` altında ayrı klasör oluşturur:
+- `report.docx`, `report.pdf`, `summary.json`
+- Her hedef için JSON raporu
+- `logs/nmap.xml`, `nmap.txt`, `web.txt`, `smb.txt`, `rpc.txt`, `audit.jsonl`, `error.txt`
+- Nmap'ın hedef başına ham XML ve ayrıntı logları `logs/` altında
 
-```bash
-python3 scanner.py -t targets.txt --scope-file scope.txt --profile safe
+Progress göstergesi hedef bazlıdır: bekleyen hedef, taranıyor, tamamlandı veya hata. Ara yüzde tarama sürecinin gerçek yüzdesi Nmap tarafından bu sürümde güvenilir şekilde alınmadığından yapay yüzde üretilmez.
 
-# Eski seçenek de desteklenir:
-python3 scanner.py --target-file targets.txt --scope-file scope.txt --profile safe
-```
-
-## 6. Çıktılar
-
-`output/` altında:
-- Her hedef için Nmap XML çıktısı
-- Hedef başına JSON raporu
-- Nmap stdout/stderr ve komut bilgilerini içeren log
-- `audit.jsonl` denetim olayları
-
-JSON'daki `status: incomplete`, taramanın başarılı tamamlandığı doğrulanamadığında kullanılır. Hata veya timeout durumlarını “temiz sonuç” olarak yorumlama.
-
-## Sınırlar / sonraki fazlar
-
-- Bu sürüm bir CVE eşleştiricisi değildir; yerel CVE DB henüz bağlanmadı.
-- Sürüm tespiti tek başına CVE etkilenimini kanıtlamaz. Dağıtım/vendor backport'ları, yapılandırma ve doğrulama gerekir.
-- Web/SMB modülleri bu sürümde yalnızca servis sınıflandırması yapar; aktif HTTP/SMB kontrolleri çalıştırmaz.
-- Metasploit entegrasyonu ve exploit doğrulaması yoktur.
-- Nmap XML, hedef erişilebilirliği, port kapsamı ve NSE çıktıları birlikte değerlendirilmelidir. Hiçbir tarayıcı “asla bulgu kaçırmama” garantisi veremez.
-- Gerçek kurumsal ortama taşımadan önce kurumun kod, veri, GitHub ve AI araçları politikalarını kontrol et; gerçek IP'leri ve tarama çıktısını kişisel repoya koyma.
+## Sınırlar
+Bu sürüm servis/port keşfi ve servis sınıflandırması yapar; web, SMB veya RPC için aktif özel güvenlik testleri uygulamaz. Açık port veya servis sürümü tek başına zafiyet kanıtı değildir.
